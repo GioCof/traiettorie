@@ -1,0 +1,1133 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Precessione degli Equinozi - Simulatore Astronomico</title>
+    <!-- Tailwind CSS per interfaccia moderna e responsive -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js per rendering 3D ad alta precisione -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Google Fonts: Inter e JetBrains Mono per dati astronomici -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #030712;
+            color: #f8fafc;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .font-mono-astro {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        /* Stile personalizzato per lo slider temporale */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            background: rgba(51, 65, 85, 0.7);
+            height: 6px;
+            border-radius: 999px;
+            outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #38bdf8;
+            cursor: pointer;
+            box-shadow: 0 0 12px rgba(56, 189, 248, 0.8);
+            border: 2px solid #ffffff;
+            transition: transform 0.15s ease;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+        /* Pannelli vetro satinato */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.78);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(148, 163, 184, 0.18);
+        }
+        /* Etichette 2D proiettate dal 3D */
+        .astro-label {
+            position: absolute;
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+            transition: opacity 0.2s ease;
+            white-space: nowrap;
+            text-shadow: 0 2px 6px rgba(0, 0, 0, 0.95);
+        }
+        /* Scrollbar sottile per pannelli su schermi piccoli */
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.3);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen relative overflow-hidden">
+
+    <!-- Canvas 3D principale -->
+    <div id="canvas-container" class="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing"></div>
+
+    <!-- Contenitore per le etichette dinamiche 3D->2D -->
+    <div id="labels-container" class="absolute inset-0 pointer-events-none overflow-hidden z-10"></div>
+
+    <!-- Header superiore -->
+    <header class="absolute top-3 left-3 right-3 sm:top-4 sm:left-4 sm:right-4 z-20 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+        <div class="glass-panel rounded-2xl px-4 py-2.5 pointer-events-auto shadow-xl flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-sky-500/20 border border-sky-400/40 flex items-center justify-center text-sky-400">
+                <!-- Icona SVG precessione -->
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <ellipse cx="12" cy="5" rx="7" ry="2.5" />
+                    <path d="M5 5l7 16 7-16" />
+                    <line x1="12" y1="21" x2="12" y2="2" stroke-dasharray="2 2" />
+                </svg>
+            </div>
+            <div>
+                <h1 class="text-sm sm:text-base font-bold tracking-tight text-white">Precessione degli Equinozi</h1>
+                <p class="text-[11px] sm:text-xs text-slate-400">Ciclo platonico di ~25.772 anni • Inclinazione 23,44°</p>
+            </div>
+        </div>
+
+        <!-- Pulsanti modalità vista e toggle pannelli -->
+        <div class="flex items-center gap-2 pointer-events-auto">
+            <div class="glass-panel rounded-xl p-1 flex items-center gap-1 shadow-lg">
+                <button id="btn-view-earth" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-sky-500 text-slate-950 transition">
+                    Focus Terra
+                </button>
+                <button id="btn-view-system" class="px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800/70 transition">
+                    Sistema Sole-Terra
+                </button>
+            </div>
+            <button id="btn-toggle-layers" title="Mostra/Nascondi Livelli" class="glass-panel p-2.5 rounded-xl text-slate-200 hover:text-sky-400 transition shadow-lg">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Pannello Livelli / Overlay Astronomici (Alto a Sinistra sotto header) -->
+    <aside id="layers-panel" class="absolute top-20 left-3 sm:left-4 z-20 glass-panel rounded-2xl p-3.5 w-60 shadow-2xl transition-all duration-300">
+        <div class="flex items-center justify-between mb-2.5">
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Livelli Astronomici</span>
+            <button id="btn-reset-cam" class="text-[11px] text-sky-400 hover:underline">Centra Camera</button>
+        </div>
+        <div class="space-y-2 text-xs">
+            <label class="flex items-center justify-between cursor-pointer hover:text-white text-slate-300">
+                <span class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 inline-block"></span>
+                    Cono di precessione
+                </span>
+                <input type="checkbox" id="chk-cone" checked class="accent-sky-400 rounded cursor-pointer">
+            </label>
+            <label class="flex items-center justify-between cursor-pointer hover:text-white text-slate-300">
+                <span class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-amber-300 inline-block"></span>
+                    Stella Polare e Vega
+                </span>
+                <input type="checkbox" id="chk-stars" checked class="accent-sky-400 rounded cursor-pointer">
+            </label>
+            <label class="flex items-center justify-between cursor-pointer hover:text-white text-slate-300">
+                <span class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-indigo-400 inline-block"></span>
+                    Equatore celeste e terrestre
+                </span>
+                <input type="checkbox" id="chk-equator" checked class="accent-sky-400 rounded cursor-pointer">
+            </label>
+            <label class="flex items-center justify-between cursor-pointer hover:text-white text-slate-300">
+                <span class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block"></span>
+                    Piano dell'eclittica
+                </span>
+                <input type="checkbox" id="chk-ecliptic" checked class="accent-sky-400 rounded cursor-pointer">
+            </label>
+            <label class="flex items-center justify-between cursor-pointer hover:text-white text-slate-300">
+                <span class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-rose-400 inline-block"></span>
+                    Equinozio di Primavera
+                </span>
+                <input type="checkbox" id="chk-equinoxes" checked class="accent-sky-400 rounded cursor-pointer">
+            </label>
+            <label class="flex items-center justify-between cursor-pointer hover:text-white text-slate-300">
+                <span class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-purple-400 inline-block"></span>
+                    Fascia zodiacale
+                </span>
+                <input type="checkbox" id="chk-zodiac" checked class="accent-sky-400 rounded cursor-pointer">
+            </label>
+            <label class="flex items-center justify-between cursor-pointer hover:text-white text-slate-300 pt-1 border-t border-slate-700/60">
+                <span class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-sky-300 inline-block"></span>
+                    Rotazione diurna & Orbita
+                </span>
+                <input type="checkbox" id="chk-spin" checked class="accent-sky-400 rounded cursor-pointer">
+            </label>
+        </div>
+        <div class="mt-3 pt-2 border-t border-slate-700/60 text-[11px] text-slate-400 leading-relaxed">
+            Trascina con mouse/dito per ruotare la vista • Rotella o pizzico per zoomare.
+        </div>
+    </aside>
+
+    <!-- Barra Controlli Temporali Inferiore -->
+    <footer class="absolute bottom-3 left-3 right-3 sm:bottom-4 sm:left-4 sm:right-4 z-20 flex flex-col items-center pointer-events-none">
+        <div class="glass-panel rounded-2xl p-3 sm:p-4 w-full max-w-2xl shadow-2xl pointer-events-auto">
+            
+            <!-- Controlli Play/Pausa, Anno corrente e Velocità -->
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div class="flex items-center gap-2">
+                    <span class="text-[11px] font-medium text-slate-400">Anno simulato:</span>
+                    <span id="info-year" class="font-mono-astro text-xs sm:text-sm font-bold text-sky-300 bg-slate-900/80 px-2.5 py-1 rounded-lg border border-slate-700/80">2026 d.C.</span>
+                </div>
+
+                <div class="flex items-center gap-2 ml-auto">
+                    <button id="btn-play" class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-semibold text-xs shadow-lg shadow-sky-500/25 transition">
+                        <svg id="icon-play" class="w-3.5 h-3.5 hidden" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                        </svg>
+                        <svg id="icon-pause" class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M5.75 3a.75.75 0 00-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V3.75A.75.75 0 007.25 3h-1.5zM12.75 3a.75.75 0 00-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V3.75a.75.75 0 00-.75-.75h-1.5z" />
+                        </svg>
+                        <span id="txt-play">Pausa</span>
+                    </button>
+                    <select id="select-speed" title="Velocità simulazione" class="bg-slate-800/90 text-slate-200 text-xs rounded-xl px-2.5 py-1.5 border border-slate-700 outline-none cursor-pointer">
+                        <option value="250">Lenta (250 anni/s)</option>
+                        <option value="900" selected>Normale (900 anni/s)</option>
+                        <option value="2500">Veloce (2500 anni/s)</option>
+                        <option value="5000">Ultra (5000 anni/s)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Cursore Temporale (Slider su un intero ciclo di 25.772 anni: da -11000 a +14772) -->
+            <div class="flex items-center gap-3">
+                <span class="font-mono-astro text-[11px] text-slate-400 w-20 text-right shrink-0">11.000 a.C.</span>
+                <div class="relative flex-1 flex items-center">
+                    <input type="range" id="time-slider" min="-11000" max="14772" step="1" value="2026" class="w-full">
+                </div>
+                <span class="font-mono-astro text-[11px] text-slate-400 w-20 shrink-0">14.772 d.C.</span>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        /**
+         * SIMULATORE INTERATTIVO DELLA PRECESSIONE DEGLI EQUINOZI
+         * Periodo di precessione: T = 25.772 anni
+         * Obliquità dell'eclittica: epsilon = 23,44 gradi
+         */
+
+        // --- COSTANTI ASTRONOMICHE ---
+        const PRECESSION_PERIOD = 25772; // Anni per un giro completo
+        const OBLIQUITY_DEG = 23.44;
+        const OBLIQUITY_RAD = THREE.MathUtils.degToRad(OBLIQUITY_DEG);
+        const REFERENCE_YEAR = 2000; // Epoca J2000.0 di riferimento
+
+        // --- STATO DELL'APPLICAZIONE ---
+        const state = {
+            year: 2026,
+            isPlaying: true,
+            speed: 900, // anni simulati al secondo
+            viewMode: 'earth', // 'earth' | 'system'
+            earthSpinAngle: 0,
+            earthOrbitAngle: 0,
+            layers: {
+                cone: true,
+                stars: true,
+                equator: true,
+                ecliptic: true,
+                equinoxes: true,
+                zodiac: true,
+                spin: true
+            }
+        };
+
+        // --- DATI DELLE STELLE POLARI LUNGO IL CERCHIO DI PRECESSIONE ---
+        // Manteniamo esclusivamente la Stella Polare (Polaris) e Vega come riferimenti
+        const poleStarsData = [
+            { name: "Stella Polare (Polaris)", epoch: "~2000 d.C.", year: 2000, color: 0xfef08a, size: 0.24, radiusOffset: 1.0 },
+            { name: "Vega", epoch: "~14.000 d.C.", year: 14000, color: 0x7dd3fc, size: 0.26, radiusOffset: 1.06 }
+        ];
+
+        // --- COSTELLAZIONI DELLO ZODIACO LUNGO L'ECLITTICA ---
+        // Posizionate in base alla longitudine eclittica (0° = Punto Vernale nel 2000 d.C. nei Pesci)
+        const zodiacConstellations = [
+            { name: "Pesci ♓", lonDeg: 0 },
+            { name: "Ariete ♈", lonDeg: 30 },
+            { name: "Toro ♉", lonDeg: 60 },
+            { name: "Gemelli ♊", lonDeg: 90 },
+            { name: "Cancro ♋", lonDeg: 120 },
+            { name: "Leone ♌", lonDeg: 150 },
+            { name: "Vergine ♍", lonDeg: 180 },
+            { name: "Bilancia ♎", lonDeg: 210 },
+            { name: "Scorpione ♏", lonDeg: 240 },
+            { name: "Sagittario ♐", lonDeg: 270 },
+            { name: "Capricorno ♑", lonDeg: 300 },
+            { name: "Acquario ♒", lonDeg: 330 }
+        ];
+
+        // --- INIZIALIZZAZIONE SCENA THREE.JS ---
+        const container = document.getElementById('canvas-container');
+        const labelsContainer = document.getElementById('labels-container');
+
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x030712, 0.008);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(renderer.domElement);
+
+        // --- CONTROLLI CAMERA ORBITALI PERSONALIZZATI (MOUSE + TOUCH) ---
+        const camState = {
+            theta: 0.65,       // angolo orizzontale
+            phi: 1.08,         // angolo verticale rispetto all'asse Y
+            radius: 14.5,      // distanza dal target
+            targetRadius: 14.5,
+            targetPos: new THREE.Vector3(0, 1.2, 0),
+            desiredTargetPos: new THREE.Vector3(0, 1.2, 0),
+            isDragging: false,
+            prevX: 0,
+            prevY: 0,
+            pinchDist: 0
+        };
+
+        function updateCameraPosition() {
+            camState.radius += (camState.targetRadius - camState.radius) * 0.1;
+            camState.targetPos.lerp(camState.desiredTargetPos, 0.1);
+
+            const x = camState.targetPos.x + camState.radius * Math.sin(camState.phi) * Math.sin(camState.theta);
+            const y = camState.targetPos.y + camState.radius * Math.cos(camState.phi);
+            const z = camState.targetPos.z + camState.radius * Math.sin(camState.phi) * Math.cos(camState.theta);
+
+            camera.position.set(x, y, z);
+            camera.lookAt(camState.targetPos);
+        }
+
+        // Eventi Mouse per rotazione e zoom
+        renderer.domElement.addEventListener('mousedown', (e) => {
+            camState.isDragging = true;
+            camState.prevX = e.clientX;
+            camState.prevY = e.clientY;
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!camState.isDragging) return;
+            const dx = e.clientX - camState.prevX;
+            const dy = e.clientY - camState.prevY;
+            camState.theta -= dx * 0.007;
+            camState.phi = THREE.MathUtils.clamp(camState.phi - dy * 0.007, 0.12, Math.PI - 0.12);
+            camState.prevX = e.clientX;
+            camState.prevY = e.clientY;
+        });
+
+        window.addEventListener('mouseup', () => {
+            camState.isDragging = false;
+        });
+
+        renderer.domElement.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            camState.targetRadius = THREE.MathUtils.clamp(camState.targetRadius + e.deltaY * 0.015, 6, 48);
+        }, { passive: false });
+
+        // Eventi Touch per dispositivi mobili
+        renderer.domElement.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+                camState.isDragging = true;
+                camState.prevX = e.touches[0].clientX;
+                camState.prevY = e.touches[0].clientY;
+            } else if (e.touches.length === 2) {
+                camState.isDragging = false;
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                camState.pinchDist = Math.hypot(dx, dy);
+            }
+        }, { passive: true });
+
+        renderer.domElement.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 1 && camState.isDragging) {
+                const dx = e.touches[0].clientX - camState.prevX;
+                const dy = e.touches[0].clientY - camState.prevY;
+                camState.theta -= dx * 0.008;
+                camState.phi = THREE.MathUtils.clamp(camState.phi - dy * 0.008, 0.12, Math.PI - 0.12);
+                camState.prevX = e.touches[0].clientX;
+                camState.prevY = e.touches[0].clientY;
+            } else if (e.touches.length === 2) {
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                const dist = Math.hypot(dx, dy);
+                const delta = camState.pinchDist - dist;
+                camState.targetRadius = THREE.MathUtils.clamp(camState.targetRadius + delta * 0.05, 6, 48);
+                camState.pinchDist = dist;
+            }
+        }, { passive: true });
+
+        renderer.domElement.addEventListener('touchend', () => {
+            camState.isDragging = false;
+        });
+
+        // --- LUCI ---
+        const ambientLight = new THREE.AmbientLight(0x334155, 1.3);
+        scene.add(ambientLight);
+
+        const sunPointLight = new THREE.PointLight(0xfffbeb, 2.6, 120);
+        sunPointLight.position.set(0, 0, 0);
+        scene.add(sunPointLight);
+
+        // Luce direzionale morbida per rendere sempre leggibili i continenti anche in vista Focus Terra
+        const fillLight = new THREE.DirectionalLight(0x93c5fd, 0.85);
+        fillLight.position.set(10, 15, 10);
+        scene.add(fillLight);
+
+        // --- SFONDO STELLATO PROFONDO ---
+        function createStarfield() {
+            const starCount = 2400;
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(starCount * 3);
+            const colors = new Float32Array(starCount * 3);
+
+            const palette = [
+                new THREE.Color(0xffffff),
+                new THREE.Color(0xbae6fd),
+                new THREE.Color(0xfef08a),
+                new THREE.Color(0xc7d2fe)
+            ];
+
+            for (let i = 0; i < starCount; i++) {
+                const r = 75 + Math.random() * 140;
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+
+                positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+                positions[i * 3 + 1] = r * Math.cos(phi);
+                positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+
+                const col = palette[Math.floor(Math.random() * palette.length)];
+                const intensity = 0.4 + Math.random() * 0.6;
+                colors[i * 3] = col.r * intensity;
+                colors[i * 3 + 1] = col.g * intensity;
+                colors[i * 3 + 2] = col.b * intensity;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            const material = new THREE.PointsMaterial({
+                size: 0.45,
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.85
+            });
+
+            const stars = new THREE.Points(geometry, material);
+            scene.add(stars);
+        }
+        createStarfield();
+
+        // --- TEXTURE PROCEDURALE DELLA TERRA (CONTINENTI, OCEANI, CALOTTE, RETICOLO) ---
+        function createEarthTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+
+            // Oceano profondo
+            const oceanGrad = ctx.createLinearGradient(0, 0, 0, 512);
+            oceanGrad.addColorStop(0, '#0c4a6e');
+            oceanGrad.addColorStop(0.5, '#0369a1');
+            oceanGrad.addColorStop(1, '#0c4a6e');
+            ctx.fillStyle = oceanGrad;
+            ctx.fillRect(0, 0, 1024, 512);
+
+            // Continenti stilizzati realistici
+            ctx.fillStyle = '#15803d';
+            ctx.strokeStyle = '#22c55e';
+            ctx.lineWidth = 1.5;
+
+            const continents = [
+                // Nord America
+                [[140, 90], [240, 75], [295, 115], [275, 175], [220, 215], [180, 195], [150, 145]],
+                // Sud America
+                [[265, 245], [325, 265], [345, 330], [305, 420], [275, 435], [260, 340]],
+                // Europa
+                [[475, 85], [555, 75], [575, 135], [520, 160], [470, 145]],
+                // Africa
+                [[470, 175], [555, 175], [600, 240], [565, 360], [520, 375], [485, 290], [455, 230]],
+                // Asia
+                [[575, 75], [770, 70], [845, 125], [810, 215], [715, 245], [635, 215], [580, 155]],
+                // Australia
+                [[765, 305], [845, 300], [860, 360], [795, 375], [760, 345]]
+            ];
+
+            continents.forEach(poly => {
+                ctx.beginPath();
+                poly.forEach((pt, idx) => {
+                    if (idx === 0) ctx.moveTo(pt[0], pt[1]);
+                    else ctx.lineTo(pt[0], pt[1]);
+                });
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+            });
+
+            // Calotte polari Artide e Antartide
+            ctx.fillStyle = '#f1f5f9';
+            ctx.fillRect(0, 0, 1024, 28);
+            ctx.fillRect(0, 480, 1024, 32);
+
+            // Meridiani e Paralleli sottili
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
+            ctx.lineWidth = 1;
+            for (let x = 0; x <= 1024; x += 64) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, 512);
+                ctx.stroke();
+            }
+            for (let y = 64; y < 512; y += 64) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(1024, y);
+                ctx.stroke();
+            }
+
+            // Linea dell'Equatore Terrestre evidenziata
+            ctx.strokeStyle = '#818cf8';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(0, 256);
+            ctx.lineTo(1024, 256);
+            ctx.stroke();
+
+            const tex = new THREE.CanvasTexture(canvas);
+            return tex;
+        }
+
+        // --- SOLE E PIANO DELL'ECLITTICA ---
+        const systemGroup = new THREE.Group();
+        scene.add(systemGroup);
+
+        // Sole al centro dell'orbita (0,0,0)
+        const sunGeometry = new THREE.SphereGeometry(1.4, 32, 32);
+        const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xfbbf24 });
+        const sunMesh = new THREE.Mesh(sunGeometry, sunMaterial);
+        systemGroup.add(sunMesh);
+
+        // Alone luminoso solare (Sprite procedurale)
+        function createGlowSprite(colorHex, size) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            const grad = ctx.createRadialGradient(64, 64, 4, 64, 64, 64);
+            grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            grad.addColorStop(0.25, colorHex);
+            grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 128, 128);
+
+            const tex = new THREE.CanvasTexture(canvas);
+            const mat = new THREE.SpriteMaterial({
+                map: tex,
+                transparent: true,
+                blending: THREE.AdditiveBlending
+            });
+            const sprite = new THREE.Sprite(mat);
+            sprite.scale.set(size, size, 1);
+            return sprite;
+        }
+        sunMesh.add(createGlowSprite('rgba(251, 191, 36, 0.65)', 7.5));
+
+        // Orbita terrestre (Eclittica nel sistema solare)
+        const ORBIT_RADIUS = 13.5;
+        const orbitCurve = new THREE.EllipseCurve(0, 0, ORBIT_RADIUS, ORBIT_RADIUS, 0, Math.PI * 2, false, 0);
+        const orbitPoints = orbitCurve.getPoints(128).map(p => new THREE.Vector3(p.x, 0, p.y));
+        const orbitGeometry = new THREE.BufferGeometry().setFromPoints(orbitPoints);
+        const orbitMaterial = new THREE.LineBasicMaterial({
+            color: 0x10b981,
+            transparent: true,
+            opacity: 0.45
+        });
+        const orbitLine = new THREE.Line(orbitGeometry, orbitMaterial);
+        systemGroup.add(orbitLine);
+
+        // --- GRUPPO TERRA E APPARATO DI PRECESSIONE ---
+        // Questo gruppo si muove lungo l'orbita (o rimane centrato in modalità Focus Terra)
+        const earthSystemGroup = new THREE.Group();
+        scene.add(earthSystemGroup);
+
+        // 1. Piano locale dell'Eclittica centrato sulla Terra
+        const eclipticGroup = new THREE.Group();
+        earthSystemGroup.add(eclipticGroup);
+
+        const eclipticDiscGeo = new THREE.RingGeometry(1.8, 5.2, 64);
+        const eclipticDiscMat = new THREE.MeshBasicMaterial({
+            color: 0x10b981,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.11
+        });
+        const eclipticDisc = new THREE.Mesh(eclipticDiscGeo, eclipticDiscMat);
+        eclipticDisc.rotation.x = Math.PI / 2;
+        eclipticGroup.add(eclipticDisc);
+
+        const eclipticRingGeo = new THREE.RingGeometry(5.16, 5.22, 96);
+        const eclipticRingMat = new THREE.MeshBasicMaterial({
+            color: 0x34d399,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.55
+        });
+        const eclipticRing = new THREE.Mesh(eclipticRingGeo, eclipticRingMat);
+        eclipticRing.rotation.x = Math.PI / 2;
+        eclipticGroup.add(eclipticRing);
+
+        // Polo Nord dell'Eclittica (asse perpendicolare fisso verticalmente)
+        const eclipticPoleGeo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(0, -5.8, 0),
+            new THREE.Vector3(0, 6.2, 0)
+        ]);
+        const eclipticPoleMat = new THREE.LineDashedMaterial({
+            color: 0x34d399,
+            dashSize: 0.25,
+            gapSize: 0.2,
+            transparent: true,
+            opacity: 0.5
+        });
+        const eclipticPoleLine = new THREE.Line(eclipticPoleGeo, eclipticPoleMat);
+        eclipticPoleLine.computeLineDistances();
+        eclipticGroup.add(eclipticPoleLine);
+
+        // 2. Fascia Zodiacale esterna lungo l'eclittica
+        const zodiacGroup = new THREE.Group();
+        earthSystemGroup.add(zodiacGroup);
+
+        const ZODIAC_RADIUS = 7.4;
+        const zodiacRingGeo = new THREE.RingGeometry(ZODIAC_RADIUS - 0.03, ZODIAC_RADIUS + 0.03, 128);
+        const zodiacRingMat = new THREE.MeshBasicMaterial({
+            color: 0xa855f7,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.35
+        });
+        const zodiacRing = new THREE.Mesh(zodiacRingGeo, zodiacRingMat);
+        zodiacRing.rotation.x = Math.PI / 2;
+        zodiacGroup.add(zodiacRing);
+
+        // Tacche divisorie dei 12 settori zodiacali
+        const zodiacMarkers = [];
+        zodiacConstellations.forEach(z => {
+            const rad = THREE.MathUtils.degToRad(z.lonDeg);
+            // Tacca
+            const p1 = new THREE.Vector3(Math.cos(rad) * (ZODIAC_RADIUS - 0.25), 0, -Math.sin(rad) * (ZODIAC_RADIUS - 0.25));
+            const p2 = new THREE.Vector3(Math.cos(rad) * (ZODIAC_RADIUS + 0.25), 0, -Math.sin(rad) * (ZODIAC_RADIUS + 0.25));
+            const tickGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+            const tickLine = new THREE.Line(tickGeo, new THREE.LineBasicMaterial({ color: 0xc084fc, transparent: true, opacity: 0.5 }));
+            zodiacGroup.add(tickLine);
+
+            // Ancora per etichetta HTML (al centro del settore di 30°)
+            const midRad = THREE.MathUtils.degToRad(z.lonDeg + 15);
+            const anchor = new THREE.Object3D();
+            anchor.position.set(Math.cos(midRad) * (ZODIAC_RADIUS + 0.4), 0, -Math.sin(midRad) * (ZODIAC_RADIUS + 0.4));
+            zodiacGroup.add(anchor);
+            zodiacMarkers.push({ name: z.name, object: anchor, lonDeg: z.lonDeg });
+        });
+
+        // 3. Cono di Precessione e Cerchio Polare Celeste
+        const coneGroup = new THREE.Group();
+        earthSystemGroup.add(coneGroup);
+
+        const CONE_HEIGHT = 5.4;
+        const CONE_RADIUS = CONE_HEIGHT * Math.tan(OBLIQUITY_RAD);
+
+        // Cono Nord (semitrasparente)
+        const northConeGeo = new THREE.ConeGeometry(CONE_RADIUS, CONE_HEIGHT, 64, 1, true);
+        // Il ConeGeometry punta verso +Y, con base in basso. Noi vogliamo il vertice nell'origine (Terra) e base in alto:
+        northConeGeo.rotateX(Math.PI);
+        northConeGeo.translate(0, CONE_HEIGHT / 2, 0);
+
+        const coneMat = new THREE.MeshBasicMaterial({
+            color: 0x38bdf8,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.13,
+            depthWrite: false
+        });
+        const northConeMesh = new THREE.Mesh(northConeGeo, coneMat);
+        coneGroup.add(northConeMesh);
+
+        // Cono Sud (più tenue)
+        const southConeGeo = new THREE.ConeGeometry(CONE_RADIUS * 0.75, CONE_HEIGHT * 0.75, 48, 1, true);
+        southConeGeo.translate(0, -(CONE_HEIGHT * 0.75) / 2, 0);
+        const southConeMat = new THREE.MeshBasicMaterial({
+            color: 0x38bdf8,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.06,
+            depthWrite: false
+        });
+        const southConeMesh = new THREE.Mesh(southConeGeo, southConeMat);
+        coneGroup.add(southConeMesh);
+
+        // Cerchio superiore descritto dal Polo Nord Celeste in 25.772 anni
+        const precessionCirclePts = [];
+        for (let i = 0; i <= 128; i++) {
+            const a = (i / 128) * Math.PI * 2;
+            precessionCirclePts.push(new THREE.Vector3(
+                Math.cos(a) * CONE_RADIUS,
+                CONE_HEIGHT,
+                Math.sin(a) * CONE_RADIUS
+            ));
+        }
+        const precessionCircleGeo = new THREE.BufferGeometry().setFromPoints(precessionCirclePts);
+        const precessionCircleMat = new THREE.LineBasicMaterial({
+            color: 0x22d3ee,
+            transparent: true,
+            opacity: 0.85
+        });
+        const precessionCircleLine = new THREE.Line(precessionCircleGeo, precessionCircleMat);
+        coneGroup.add(precessionCircleLine);
+
+        // 4. Stelle Polari lungo il cerchio di precessione
+        const poleStarsGroup = new THREE.Group();
+        earthSystemGroup.add(poleStarsGroup);
+        const starLabelObjects = [];
+
+        // Funzione che mappa l'anno solare all'angolo sul cerchio di precessione
+        // Nel 2000 d.C. (Polaris), poniamo l'angolo azimuth a 0 rad (asse +X).
+        // La precessione degli equinozi avanza in senso ORARIO (angolo positivo in coordinate X, Z dove +Z è verso lo spettatore)
+        function getPrecessionAzimuth(year) {
+            const deltaYears = year - REFERENCE_YEAR;
+            return (deltaYears / PRECESSION_PERIOD) * Math.PI * 2;
+        }
+
+        poleStarsData.forEach(star => {
+            const az = getPrecessionAzimuth(star.year);
+            const r = CONE_RADIUS * star.radiusOffset;
+            const y = CONE_HEIGHT + 0.15;
+            const x = Math.cos(az) * r;
+            const z = Math.sin(az) * r;
+
+            const sGeo = new THREE.SphereGeometry(star.size, 16, 16);
+            const sMat = new THREE.MeshBasicMaterial({ color: star.color });
+            const sMesh = new THREE.Mesh(sGeo, sMat);
+            sMesh.position.set(x, y, z);
+
+            // Alone stella
+            sMesh.add(createGlowSprite('rgba(254, 240, 138, 0.75)', star.size * 6.5));
+            poleStarsGroup.add(sMesh);
+
+            starLabelObjects.push({
+                name: star.name,
+                epoch: star.epoch,
+                year: star.year,
+                object: sMesh
+            });
+        });
+
+        // 5. Gruppo Precessionale Dinamico (Asse Terrestre Inclinato + Equatore Celeste + Punti Equinoziali)
+        // Ruota attorno all'asse Y (Polo dell'Eclittica) in base all'anno selezionato
+        const precessionPivot = new THREE.Group();
+        earthSystemGroup.add(precessionPivot);
+
+        // Gruppo inclinato di 23,44 gradi
+        const tiltGroup = new THREE.Group();
+        // Incliniamo attorno all'asse Z di -OBLIQUITY_RAD affinché il Polo Nord punti verso +X quando precessionPivot.rotation.y = 0
+        tiltGroup.rotation.z = -OBLIQUITY_RAD;
+        precessionPivot.add(tiltGroup);
+
+        // Globo Terrestre
+        const earthGeo = new THREE.SphereGeometry(1.45, 48, 48);
+        const earthMat = new THREE.MeshStandardMaterial({
+            map: createEarthTexture(),
+            roughness: 0.65,
+            metalness: 0.1
+        });
+        const earthMesh = new THREE.Mesh(earthGeo, earthMat);
+        tiltGroup.add(earthMesh);
+
+        // Atmosfera sottile luminosa
+        const atmoGeo = new THREE.SphereGeometry(1.51, 32, 32);
+        const atmoMat = new THREE.MeshBasicMaterial({
+            color: 0x38bdf8,
+            transparent: true,
+            opacity: 0.12,
+            side: THREE.BackSide
+        });
+        tiltGroup.add(new THREE.Mesh(atmoGeo, atmoMat));
+
+        // Asse di Rotazione Terrestre (esteso fino al cerchio di precessione)
+        const axisLength = CONE_HEIGHT / Math.cos(OBLIQUITY_RAD);
+        const axisGeo = new THREE.CylinderGeometry(0.035, 0.035, axisLength + 4.2, 16);
+        // Spostiamo il cilindro affinché la punta superiore tocchi esattamente il cerchio di precessione
+        axisGeo.translate(0, (axisLength - 4.2) / 2, 0);
+        const axisMat = new THREE.MeshBasicMaterial({ color: 0xf43f5e });
+        const axisMesh = new THREE.Mesh(axisGeo, axisMat);
+        tiltGroup.add(axisMesh);
+
+        // Puntatore luminoso del Polo Nord Celeste sul cono
+        const northPoleTip = new THREE.Mesh(
+            new THREE.SphereGeometry(0.14, 16, 16),
+            new THREE.MeshBasicMaterial({ color: 0x22d3ee })
+        );
+        northPoleTip.position.set(0, axisLength, 0);
+        northPoleTip.add(createGlowSprite('rgba(34, 211, 238, 0.9)', 1.2));
+        tiltGroup.add(northPoleTip);
+
+        // Piano dell'Equatore Celeste (perpendicolare all'asse terrestre inclinato)
+        const celestialEquatorGroup = new THREE.Group();
+        tiltGroup.add(celestialEquatorGroup);
+
+        const eqDiscGeo = new THREE.RingGeometry(1.75, 5.2, 64);
+        const eqDiscMat = new THREE.MeshBasicMaterial({
+            color: 0x6366f1,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.14
+        });
+        const eqDisc = new THREE.Mesh(eqDiscGeo, eqDiscMat);
+        eqDisc.rotation.x = Math.PI / 2;
+        celestialEquatorGroup.add(eqDisc);
+
+        const eqRingGeo = new THREE.RingGeometry(5.16, 5.22, 96);
+        const eqRingMat = new THREE.MeshBasicMaterial({
+            color: 0x818cf8,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.75
+        });
+        const eqRing = new THREE.Mesh(eqRingGeo, eqRingMat);
+        eqRing.rotation.x = Math.PI / 2;
+        celestialEquatorGroup.add(eqRing);
+
+        // 6. Punti Equinoziali (Intersezione tra Equatore Celeste e Piano dell'Eclittica)
+        // Poiché tiltGroup ruota attorno a Z, la linea dei nodi (intersezione tra piano XZ e piano equatoriale inclinato)
+        // giace sempre lungo l'asse locale Z di tiltGroup!
+        const equinoxesGroup = new THREE.Group();
+        tiltGroup.add(equinoxesGroup);
+
+        // Linea degli Equinozi (Linea dei Nodi)
+        const nodeLineGeo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(0, 0, -ZODIAC_RADIUS),
+            new THREE.Vector3(0, 0, ZODIAC_RADIUS)
+        ]);
+        const nodeLineMat = new THREE.LineDashedMaterial({
+            color: 0xf43f5e,
+            dashSize: 0.25,
+            gapSize: 0.15,
+            transparent: true,
+            opacity: 0.7
+        });
+        const nodeLine = new THREE.Line(nodeLineGeo, nodeLineMat);
+        nodeLine.computeLineDistances();
+        equinoxesGroup.add(nodeLine);
+
+        // Punto Vernale (Primo Punto d'Ariete γ - Equinozio di Primavera)
+        // Quando precessionPivot.rotation.y = 0 (anno 2000), l'asse +X punta verso 0°, quindi +Z corrisponde a -90°;
+        // Per allineare γ a 0° longitudine (+X) nel 2000, impostiamo la posizione iniziale e ruotiamo di conseguenza.
+        // Verifichiamo: se tiltGroup è inclinato attorno a Z, i nodi sono su +Z e -Z.
+        // Ruotiamo zodiacGroup di +90° (Math.PI/2) così l'asse +Z corrisponde a 0° (Pesci nel 2000 d.C.)!
+        zodiacGroup.rotation.y = -Math.PI / 2;
+
+        const vernalPointMesh = new THREE.Mesh(
+            new THREE.SphereGeometry(0.16, 16, 16),
+            new THREE.MeshBasicMaterial({ color: 0xf43f5e })
+        );
+        vernalPointMesh.position.set(0, 0, 5.2);
+        vernalPointMesh.add(createGlowSprite('rgba(244, 63, 94, 0.85)', 1.1));
+        equinoxesGroup.add(vernalPointMesh);
+
+        // Proiezione del Punto Vernale sulla fascia zodiacale
+        const vernalZodiacMarker = new THREE.Mesh(
+            new THREE.SphereGeometry(0.14, 16, 16),
+            new THREE.MeshBasicMaterial({ color: 0xfb7185 })
+        );
+        vernalZodiacMarker.position.set(0, 0, ZODIAC_RADIUS);
+        equinoxesGroup.add(vernalZodiacMarker);
+
+        // --- SISTEMA ETICHETTE HTML DINAMICHE ---
+        const dynamicLabels = [];
+
+        function registerLabel(object3D, htmlContent, className = '', category = 'general') {
+            const el = document.createElement('div');
+            el.className = `astro-label ${className}`;
+            el.innerHTML = htmlContent;
+            labelsContainer.appendChild(el);
+            dynamicLabels.push({ object3D, el, category });
+            return el;
+        }
+
+        // Registra etichette delle stelle polari
+        starLabelObjects.forEach(s => {
+            registerLabel(
+                s.object,
+                `<div class="px-2 py-0.5 rounded bg-slate-950/75 border border-amber-400/30 text-[10px] leading-tight">
+                    <div class="font-semibold text-amber-200">${s.name}</div>
+                </div>`,
+                '',
+                'stars'
+            );
+        });
+
+        // Registra etichette dello zodiaco
+        zodiacMarkers.forEach(z => {
+            registerLabel(
+                z.object,
+                `<span class="text-[10px] font-medium text-purple-300/85 bg-slate-950/50 px-1.5 py-0.5 rounded">${z.name}</span>`,
+                '',
+                'zodiac'
+            );
+        });
+
+        // Etichette Punti Equinoziali e Poli
+        registerLabel(
+            vernalPointMesh,
+            `<span class="px-2 py-0.5 rounded-full bg-rose-500/90 text-white font-semibold text-[10px] shadow">Equinozio di Primavera</span>`,
+            '',
+            'equinoxes'
+        );
+        registerLabel(
+            northPoleTip,
+            `<span class="px-1.5 py-0.5 rounded bg-cyan-500/90 text-slate-950 font-bold text-[10px]">Polo Nord Celeste</span>`,
+            '',
+            'cone'
+        );
+        const sunLabelEl = registerLabel(
+            sunMesh,
+            `<span class="px-2 py-0.5 rounded-full bg-amber-400/90 text-slate-950 font-bold text-[11px]">Sole</span>`,
+            '',
+            'sun'
+        );
+
+        // --- AGGIORNAMENTO STATO SCENA IN BASE ALL'ANNO ---
+        const uiYear = document.getElementById('info-year');
+        const timeSlider = document.getElementById('time-slider');
+
+        function formatYearLabel(year) {
+            const roundedYear = Math.round(year);
+            return roundedYear < 0
+                ? `${Math.abs(roundedYear).toLocaleString('it-IT')} a.C.`
+                : `${roundedYear.toLocaleString('it-IT')} d.C.`;
+        }
+
+        function updateSimulationYear(newYear) {
+            state.year = THREE.MathUtils.clamp(newYear, -11000, 14772);
+            timeSlider.value = Math.round(state.year);
+
+            // Calcola angolo azimutale sul cono di precessione
+            const azimuth = getPrecessionAzimuth(state.year);
+            precessionPivot.rotation.y = -azimuth;
+
+            // Aggiorna indicatore anno minimalista
+            uiYear.textContent = formatYearLabel(state.year);
+        }
+
+        // --- GESTIONE CONTROLLI INTERFACCIA UTENTE ---
+        timeSlider.addEventListener('input', (e) => {
+            state.isPlaying = false;
+            updatePlayButtonUI();
+            updateSimulationYear(parseFloat(e.target.value));
+        });
+
+        const btnPlay = document.getElementById('btn-play');
+        const iconPlay = document.getElementById('icon-play');
+        const iconPause = document.getElementById('icon-pause');
+        const txtPlay = document.getElementById('txt-play');
+
+        function updatePlayButtonUI() {
+            if (state.isPlaying) {
+                iconPlay.classList.add('hidden');
+                iconPause.classList.remove('hidden');
+                txtPlay.textContent = 'Pausa';
+            } else {
+                iconPlay.classList.remove('hidden');
+                iconPause.classList.add('hidden');
+                txtPlay.textContent = 'Avvia';
+            }
+        }
+
+        btnPlay.addEventListener('click', () => {
+            state.isPlaying = !state.isPlaying;
+            updatePlayButtonUI();
+        });
+
+        document.getElementById('select-speed').addEventListener('change', (e) => {
+            state.speed = parseFloat(e.target.value);
+        });
+
+        // Toggle Modalità Vista (Focus Terra vs Sistema Sole-Terra)
+        const btnViewEarth = document.getElementById('btn-view-earth');
+        const btnViewSystem = document.getElementById('btn-view-system');
+
+        function setViewMode(mode) {
+            state.viewMode = mode;
+            if (mode === 'earth') {
+                btnViewEarth.className = 'px-2.5 py-1.5 rounded-lg text-xs font-medium bg-sky-500 text-slate-950 transition';
+                btnViewSystem.className = 'px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800/70 transition';
+                systemGroup.visible = false;
+                earthSystemGroup.position.set(0, 0, 0);
+                camState.desiredTargetPos.set(0, 1.4, 0);
+                camState.targetRadius = 15.5;
+            } else {
+                btnViewSystem.className = 'px-2.5 py-1.5 rounded-lg text-xs font-medium bg-sky-500 text-slate-950 transition';
+                btnViewEarth.className = 'px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800/70 transition';
+                systemGroup.visible = true;
+                camState.desiredTargetPos.set(0, 0.8, 0);
+                camState.targetRadius = 31;
+            }
+        }
+
+        btnViewEarth.addEventListener('click', () => setViewMode('earth'));
+        btnViewSystem.addEventListener('click', () => setViewMode('system'));
+
+        document.getElementById('btn-reset-cam').addEventListener('click', () => {
+            camState.theta = 0.65;
+            camState.phi = 1.08;
+            camState.targetRadius = state.viewMode === 'earth' ? 15.5 : 31;
+        });
+
+        // Toggle Pannello Livelli
+        const layersPanel = document.getElementById('layers-panel');
+
+        document.getElementById('btn-toggle-layers').addEventListener('click', () => {
+            layersPanel.classList.toggle('hidden');
+        });
+
+        // Nascondi automaticamente il pannello livelli su smartphone molto stretti all'avvio per pulizia visiva
+        if (window.innerWidth < 640) {
+            layersPanel.classList.add('hidden');
+        }
+
+        // Checkbox Livelli Astronomici
+        document.getElementById('chk-cone').addEventListener('change', (e) => {
+            state.layers.cone = e.target.checked;
+            coneGroup.visible = e.target.checked;
+        });
+        document.getElementById('chk-stars').addEventListener('change', (e) => {
+            state.layers.stars = e.target.checked;
+            poleStarsGroup.visible = e.target.checked;
+        });
+        document.getElementById('chk-equator').addEventListener('change', (e) => {
+            state.layers.equator = e.target.checked;
+            celestialEquatorGroup.visible = e.target.checked;
+        });
+        document.getElementById('chk-ecliptic').addEventListener('change', (e) => {
+            state.layers.ecliptic = e.target.checked;
+            eclipticGroup.visible = e.target.checked;
+        });
+        document.getElementById('chk-equinoxes').addEventListener('change', (e) => {
+            state.layers.equinoxes = e.target.checked;
+            equinoxesGroup.visible = e.target.checked;
+        });
+        document.getElementById('chk-zodiac').addEventListener('change', (e) => {
+            state.layers.zodiac = e.target.checked;
+            zodiacGroup.visible = e.target.checked;
+        });
+        document.getElementById('chk-spin').addEventListener('change', (e) => {
+            state.layers.spin = e.target.checked;
+        });
+
+        // --- PROIEZIONE ETICHETTE 3D -> 2D ---
+        const tempVec = new THREE.Vector3();
+
+        function updateLabels2D() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+
+            dynamicLabels.forEach(item => {
+                // Verifica visibilità categoria
+                let isVisible = true;
+                if (item.category === 'stars' && !state.layers.stars) isVisible = false;
+                if (item.category === 'zodiac' && !state.layers.zodiac) isVisible = false;
+                if (item.category === 'equinoxes' && !state.layers.equinoxes) isVisible = false;
+                if (item.category === 'cone' && !state.layers.cone) isVisible = false;
+                if (item.category === 'sun' && state.viewMode !== 'system') isVisible = false;
+
+                if (!isVisible) {
+                    item.el.style.opacity = '0';
+                    return;
+                }
+
+                item.object3D.getWorldPosition(tempVec);
+                tempVec.project(camera);
+
+                // Nascondi se dietro la camera
+                if (tempVec.z > 1) {
+                    item.el.style.opacity = '0';
+                    return;
+                }
+
+                const x = (tempVec.x * 0.5 + 0.5) * width;
+                const y = (-(tempVec.y * 0.5) + 0.5) * height;
+
+                item.el.style.left = `${x}px`;
+                item.el.style.top = `${y - 12}px`;
+                item.el.style.opacity = '1';
+            });
+        }
+
+        // --- GESTIONE RESIZE FINESTRA ---
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // --- LOOP DI ANIMAZIONE PRINCIPALE ---
+        let lastTime = performance.now();
+
+        function animate(now) {
+            requestAnimationFrame(animate);
+
+            const dt = Math.min((now - lastTime) / 1000, 0.1);
+            lastTime = now;
+
+            // Avanzamento ciclo di precessione se Play attivo
+            if (state.isPlaying) {
+                let nextYear = state.year + state.speed * dt;
+                if (nextYear > 14772) {
+                    nextYear = -11000 + (nextYear - 14772);
+                }
+                updateSimulationYear(nextYear);
+            }
+
+            // Rotazione diurna terrestre e rivoluzione orbitale
+            if (state.layers.spin) {
+                state.earthSpinAngle += dt * 1.6;
+                earthMesh.rotation.y = state.earthSpinAngle;
+
+                if (state.viewMode === 'system') {
+                    state.earthOrbitAngle += dt * 0.45;
+                    const ex = Math.cos(state.earthOrbitAngle) * ORBIT_RADIUS;
+                    const ez = Math.sin(state.earthOrbitAngle) * ORBIT_RADIUS;
+                    earthSystemGroup.position.set(ex, 0, ez);
+                    // La camera segue dolcemente la Terra nell'orbita mantenendo il Sole in vista
+                    camState.desiredTargetPos.set(ex * 0.45, 0.8, ez * 0.45);
+                }
+            }
+
+            updateCameraPosition();
+            renderer.render(scene, camera);
+            updateLabels2D();
+        }
+
+        // Avvio su window.onload
+        window.onload = function () {
+            setViewMode('earth');
+            updateSimulationYear(2026);
+            lastTime = performance.now();
+            animate(lastTime);
+        };
+    </script>
+</body>
+</html>
